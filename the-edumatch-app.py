@@ -1,18 +1,48 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
+import joblib
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 # =====================================================================
-# 📚 STEP 1: INITIALIZE THE SEMANTIC VECTOR RAG ENGINE
+# 📦 STEP 1: INITIALIZE PRE-TRAINED MACHINE LEARNING ASSETS
+# =====================================================================
+@st.cache_resource
+def load_analytics_assets():
+    try:
+        model = joblib.load("models/german_retention_model.pkl")
+        scaler = joblib.load("models/scaler.pkl")
+        kmeans = joblib.load("models/kmeans_model.pkl")
+        
+        # Extract features directly from the trained model to avoid missing X_train errors
+        if hasattr(model, "feature_names_in_"):
+            x_train_columns = list(model.feature_names_in_)
+        else:
+            # Fallback explicit column layout order matching baseline training vectors
+            x_train_columns = [
+                "Grade_Avg_Sem1", "Grade_Avg_Sem2", "BAfoeg_Status", 
+                "Fee_Arrears", "Displaced_Status", "Gender", 
+                "Age_At_Enrollment", "ECTS_Earned_Sem1", "ECTS_Earned_Sem2"
+            ]
+    except FileNotFoundError:
+        # Graceful fallback objects if models are missing during test phases
+        model, scaler, kmeans, x_train_columns = None, None, None, None
+
+    return model, scaler, kmeans, x_train_columns
+
+# Unpack models globally 
+german_retention_model, scaler, kmeans, X_train_cols = load_analytics_assets()
+
+
+# =====================================================================
+# 📚 STEP 2: INITIALIZE THE SEMANTIC VECTOR RAG ENGINE
 # =====================================================================
 class SemanticVectorRAG:
     """Upgraded RAG Engine using mathematical vector spaces and cosine similarity
     to search legal clauses based on descriptive risk keywords.
     """
     def __init__(self):
-        # Raw unstructured regulatory text repository
         self.documents = [
             {
                 "id": "[PO-101]",
@@ -40,13 +70,11 @@ class SemanticVectorRAG:
             }
         ]
         
-        # Build vector database metrics
         self.corpus = [doc["keywords"] for doc in self.documents]
         self.vectorizer = TfidfVectorizer()
         self.vector_database = self.vectorizer.fit_transform(self.corpus)
 
     def query_vector_space(self, student_profile, threshold=0.15):
-        """Converts incoming anomalies into a semantic query vector and computes matching scores."""
         query_terms = []
         if student_profile.get("ECTS_Earned_Sem2", 30) < 15:
             query_terms.append("low ects credit deficit warning failed progression")
@@ -76,7 +104,6 @@ class SemanticVectorRAG:
         return results if results else "✅ Clear Standing: Similarity values fell below tracking threshold."
 
 
-# Instantiate the semantic engine
 @st.cache_resource
 def load_semantic_rag():
     return SemanticVectorRAG()
@@ -85,7 +112,7 @@ semantic_rag_engine = load_semantic_rag()
 
 
 # =====================================================================
-# 🎨 STEP 2: STREAMLIT FRONT-END UI DEPLOYMENT LAYOUT
+# 🎨 STEP 3: STREAMLIT FRONT-END UI DEPLOYMENT LAYOUT
 # =====================================================================
 st.set_page_config(page_title="EduMatch Dashboard", page_icon="🎓", layout="wide")
 
@@ -98,7 +125,6 @@ st.markdown(
 
 st.write("---")
 
-# Split layout cleanly into an Input Sidebar column and Results Display window
 col1, col2 = st.columns([1, 2])
 
 with col1:
@@ -116,13 +142,14 @@ with col1:
     ects_s2 = st.slider("Earned ECTS (2nd Semester)", 10, 40, value=25, step=5)
     grade_s2 = st.slider("Grade Average Point (2nd Semester)", 1.0, 5.0, value=2.3, step=0.1)
 
+
 # =====================================================================
-# 🧭 STEP 3: RUN LIVE BACKEND INTERACTION PIPELINE
+# 🧭 STEP 4: RUN LIVE BACKEND INTERACTION PIPELINE
 # =====================================================================
 with col2:
     st.header("📊 Advisor Analytical Output")
     
-    # Pack parameters into data vector schema matching model constraints
+    # Structure frontend data vectors
     input_data = pd.DataFrame([{
         "Grade_Avg_Sem1": grade_s1,
         "Grade_Avg_Sem2": grade_s2,
@@ -135,15 +162,14 @@ with col2:
         "ECTS_Earned_Sem2": ects_s2
     }])
     
-    # Enforce exact sorting to match baseline training schema
-    # (Assumes your workspace still holds 'X_train', 'german_retention_model', 'scaler', and 'kmeans' references)
-    try:
-        input_data = input_data[X_train.columns]
+    # Force alignment with feature orders
+    if X_train_cols is not None:
+        input_data = input_data[X_train_cols]
         
-        # Calculate continuously optimized classification risk probabilities
+    # Check if files were successfully tracked by asset cache loader
+    if german_retention_model is not None:
+        # Run live model evaluation pipelines
         risk_probability = german_retention_model.predict_proba(input_data)[0][1]
-        
-        # Standardize features and evaluate unsupervised cluster allocations
         scaled_input = scaler.transform(input_data)
         assigned_cluster = kmeans.predict(scaled_input)[0]
         
@@ -154,28 +180,28 @@ with col2:
         }
         cluster_name = cluster_mapping.get(assigned_cluster, "Unknown Cluster Profile")
         
-        # Execute local Semantic Vector database lookup
+        # Execute local Semantic Vector RAG Database query lookup
         student_profile_dict = input_data.iloc[0].to_dict()
         rag_output = semantic_rag_engine.query_vector_space(student_profile_dict)
         
-        # Display Box A: Classification Probability output rounded directly with no decimals
+        # Render Box A: Status & Probability rounded cleanly to whole values (:0%)
         status_indicator = "🔴 CRITICAL RISK" if risk_probability > 0.5 else "🟢 STABLE STATUS"
-        
         if risk_probability > 0.5:
             st.error(f"**Operational Status:** {status_indicator}\n\n**Calculated Exmatriculation Probability:** {risk_probability:.0%}")
         else:
             st.success(f"**Operational Status:** {status_indicator}\n\n**Calculated Exmatriculation Probability:** {risk_probability:.0%}")
             
-        # Display Box B: Cluster Assignments
+        # Render Box B: Cohort Cluster Outputs
         st.info(f"**🧭 Assigned Intervention Cohort:**\n\n{cluster_name}")
         
-        # Display Box C: Upgraded Vector Search RAG context
+        # Render Box C: Vector Search RAG text area context layout
         st.subheader("📚 Legal Compliance & Regulatory Directives")
         st.text_area(
             label="Vector-Matched Examination Regulations (Prüfungsordnung)",
             value=rag_output,
-            height=250
+            height=250,
+            disabled=True
         )
-        
-    except NameError:
-        st.warning("⚠️ Baseline pipeline configurations missing. Please run your model training cells up to Phase 4 before firing up Streamlit context wrappers.")
+    else:
+        # Graceful fallback visual state if .pkl binaries aren't found in repository models/ folder
+        st.warning("⚠️ Baseline pipeline configurations missing.
