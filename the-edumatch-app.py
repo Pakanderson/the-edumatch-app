@@ -40,34 +40,58 @@ german_retention_model, scaler, kmeans, X_train_cols = load_analytics_assets()
 
 
 # =====================================================================
-# 📚 STEP 2: INITIALIZE THE SEMANTIC VECTOR RAG ENGINE
+# 📚 STEP 2: EXPANDED SEMANTIC VECTOR RAG ENGINE (WITH BOLD & COLOR MARKDOWN)
 # =====================================================================
 class SemanticVectorRAG:
     def __init__(self):
         self.documents = [
             {
                 "id": "[PO-101]",
-                "title": "Academic Progression Standard",
+                "title": "Academic Progression Standard (ECTS Baseline)",
                 "text": "Gemäß § 12 der Prüfungsordnung müssen Studierende bis zum Ende des zweiten Fachsemesters mindestens 30 ECTS-Punkte erbracht haben. Bei Unterschreitung dieser Schwelle von 15 ECTS pro Semester erfolgt eine automatische Einladung zur obligatorischen Studienberatung.",
-                "keywords": "low ects credit deficit academic warning failed modules progression",
+                "keywords": "low ects credit deficit academic warning failed modules progression minimum credit requirements fail",
+            },
+            {
+                "id": "[PO-102]",
+                "title": "Academic Probation & Exam Limitations",
+                "text": "Laut § 15 der Rahmenprüfungsordnung gefährdet ein Notendurchschnitt von schlechter als 4.0 in Hauptmodulen den Studienerfolg. Studierende geraten unter akademische Bewährung und müssen einen individuellen Studienverlaufsplan mit dem Prüfungsamt abstimmen.",
+                "keywords": "bad grades high grade point average probation fail academic risk exam struggles failure",
             },
             {
                 "id": "[PO-201]",
                 "title": "Structural Leave of Absence (Urlaubssemester)",
                 "text": "Laut § 18 der Immatrikulationsordnung können reife Studierende oder Erwerbstätige bei nachgewiesener Belastung ein Urlaubssemester beantragen. Während dieses Zeitraums ruhen die regulären ECTS-Fristen, wodurch eine Exmatrikulation wegen Fristüberschreitung abgewendet wird.",
-                "keywords": "mature student age older working employment adjustment break pause",
+                "keywords": "mature student age older working employment adjustment break pause balancing life study",
+            },
+            {
+                "id": "[PO-202]",
+                "title": "Integration Support for Relocated/Displaced Students",
+                "text": "Nach § 5 des Landeshochschulgesetzes erhalten Studierende mit Fluchthintergrund oder Migrationshintergrund (Displaced Status) Zugang zu erweiterten Sprachzertifikatskursen und Härtefall-Fristverlängerungen bei Prüfungsfristen, um Integrationshemmnisse auszugleichen.",
+                "keywords": "displaced relocated relocation student immigrant refugee language barrier adjustment structural move",
             },
             {
                 "id": "[PO-301]",
-                "title": "BAföG Progress Verification",
+                "title": "BAföG Progress Verification & Formblatt 5",
                 "text": "Nach § 48 BAföG ist zum Ende des 4. Fachsemesters ein positiver Leistungsnachweis (Formblatt 5) vorzulegen. Eine frühzeitige Stabilisierung der ECTS-Zahlen im 1. und 2. Semester sichert den kontinuierlichen Erhalt der Bundesförderung und minimiert das Abbruchrisiko.",
-                "keywords": "bafoeg financial aid recipient state funding grant verification support",
+                "keywords": "bafoeg financial aid recipient state funding grant verification support grant suspension money loss",
             },
             {
                 "id": "[PO-302]",
                 "title": "Hardship Applications & Installment Deferrals",
                 "text": "Nach § 23 der Gebührenordnung führt ein Rückstand bei den Semesterbeiträgen zur Einleitung des Exmatrikulationsverfahrens. Betroffene Studierende können beim Studierendenwerk einen Härtefallantrag stellen, um eine Stundung oder Ratenzahlung der Rückstände zu vereinbaren.",
-                "keywords": "fee arrears debt unpaid tuition bursar money outstanding balance delinquency",
+                "keywords": "fee arrears debt unpaid tuition bursar money outstanding balance delinquency financial distress fees unpaid",
+            },
+            {
+                "id": "[PO-401]",
+                "title": "Diversity and Gender-Specific Family Extensions",
+                "text": "Gemäß § 21 der Gleichstellungsrichtlinie der Universität können Studierende mit Erziehungspflichten oder familiären Pflegeaufgaben alternative Prüfungsformen (Hausarbeiten statt Klausuren) beantragen, um geschlechtsspezifische Benachteiligungen im Studienverlauf zu reduzieren.",
+                "keywords": "gender female identity equality family balancing kids parental leave balance diversity equity",
+            },
+            {
+                "id": "[PO-501]",
+                "title": "Psychosocial Counseling Intervention (Mental Health)",
+                "text": "Bei extremen Diskrepanzen im Leistungsbild (z.B. hohe Noten im 1. Semester gefolgt von totalem ECTS-Einbruch im 2. Semester) verweist die Prüfungsordnung auf das psychosoziale Beratungsnetzwerk des Studierendenwerks zur Bewältigung von Prüfungsangst und Burnout.",
+                "keywords": "stress anxiety mental health drop performance discrepancy collapse dropout burn out overwhelm panic",
             },
         ]
 
@@ -75,25 +99,49 @@ class SemanticVectorRAG:
         self.vectorizer = TfidfVectorizer()
         self.vector_database = self.vectorizer.fit_transform(self.corpus)
 
-    def query_vector_space(self, student_profile, threshold=0.15):
+    def query_vector_space(self, student_profile, threshold=0.10):
         query_terms = []
-        if student_profile.get("ECTS_Earned_Sem2", 30) < 15:
-            query_terms.append("low ects credit deficit warning failed progression")
-        if (
-            student_profile.get("Age_At_Enrollment", 20) > 26
-            and student_profile.get("ECTS_Earned_Sem2", 30) < 5
-        ):
-            query_terms.append("mature student age older adjustment struggle")
+
+        ects_s1 = student_profile.get("ECTS_Earned_Sem1", 30)
+        ects_s2 = student_profile.get("ECTS_Earned_Sem2", 30)
+        grade_s1 = student_profile.get("Grade_Avg_Sem1", 2.0)
+        grade_s2 = student_profile.get("Grade_Avg_Sem2", 2.0)
+
+        if (ects_s1 + ects_s2) < 40 or ects_s2 < 15:
+            query_terms.append(
+                "low ects credit deficit warning failed progression minimum credit requirements fail"
+            )
+        if grade_s1 > 3.5 or grade_s2 > 3.5:
+            query_terms.append(
+                "bad grades high grade point average probation fail academic risk exam struggles failure"
+            )
+        if ects_s1 >= 30 and ects_s2 <= 15:
+            query_terms.append(
+                "stress anxiety mental health drop performance discrepancy collapse dropout burn out overwhelm"
+            )
+        if student_profile.get("Age_At_Enrollment", 22) > 26:
+            query_terms.append(
+                "mature student age older working employment adjustment break pause balancing life study"
+            )
         if student_profile.get("Fee_Arrears", 0) == 1:
-            query_terms.append("fee arrears debt unpaid tuition outstanding balance")
-        if (
-            student_profile.get("BAfoeg_Status", 0) == 1
-            and student_profile.get("ECTS_Earned_Sem2", 30) < 20
-        ):
-            query_terms.append("bafoeg financial aid funding support review")
+            query_terms.append(
+                "fee arrears debt unpaid tuition bursar money outstanding balance delinquency financial distress fees unpaid"
+            )
+        if student_profile.get("BAfoeg_Status", 0) == 1:
+            query_terms.append(
+                "bafoeg financial aid recipient state funding grant verification support grant suspension money loss"
+            )
+        if student_profile.get("Displaced_Status", 0) == 1:
+            query_terms.append(
+                "displaced relocated relocation student immigrant refugee language barrier adjustment structural move"
+            )
+        if student_profile.get("Gender", 0) == 0:
+            query_terms.append(
+                "gender female identity equality family balancing kids parental leave balance diversity equity"
+            )
 
         if not query_terms:
-            return "✅ Clear Standing: No critical regulatory anomalies vector-matched."
+            return ":green[**✅ Clear Standing: No critical regulatory anomalies vector-matched.**]"
 
         combined_query = " ".join(query_terms)
         query_vector = self.vectorizer.transform([combined_query])
@@ -106,14 +154,18 @@ class SemanticVectorRAG:
         for idx, score in enumerate(similarity_scores):
             if score >= threshold:
                 doc = self.documents[idx]
-                results += f"📄 [{match_count}] {doc['id']} {doc['title']} (Vector Match Score: {score:.2f})\n"
-                results += f"   Regulatory Context: {doc['text']}\n\n"
+                # 🎯 HIGHLIGHTED COLORING: Bold text tags and color-styled code identifiers
+                results += f"📄 **[{match_count}]** :red[**{doc['id']}**] **{doc['title']}** *(Vector Match Score: {score:.2f})*\n\n"
+                results += (
+                    f"&nbsp;&nbsp;&nbsp;&nbsp;**Regulatory Context:** {doc['text']}\n\n"
+                )
+                results += "--- \n\n"
                 match_count += 1
 
         return (
             results
             if results
-            else "✅ Clear Standing: Similarity values fell below tracking threshold."
+            else ":green[**✅ Clear Standing: Similarity values fell below tracking threshold.**]"
         )
 
 
@@ -143,7 +195,6 @@ st.write("---")
 
 col1, col2 = st.columns([1, 2])
 
-# Wrap input blocks inside an isolated sidebar form container
 with col1:
     with st.form("advisor_input_form"):
         st.header("👤 Student Profile Inputs")
@@ -170,7 +221,6 @@ with col1:
             "Grade Average Point (2nd Semester)", 1.0, 5.0, value=2.3, step=0.1
         )
 
-        # 🎯 RESTORE BUTTONS: Explicit submission logic required to run pipeline
         submitted = st.form_submit_button(
             "Calculate Risk & Match Regulations", type="primary"
         )
@@ -183,7 +233,6 @@ with col2:
     st.header("📊 Advisor Analytical Output")
 
     if submitted:
-        # Structure frontend data vectors
         input_data = pd.DataFrame(
             [
                 {
@@ -241,19 +290,16 @@ with col2:
 
             st.info(f"**🧭 Assigned Intervention Cohort:**\n\n{cluster_name}")
 
-            st.subheader("📚 Legal Compliance & Regulatory Directives")
-            st.text_area(
-                label="Vector-Matched Examination Regulations (Prüfungsordnung)",
-                value=rag_output,
-                height=250,
-                disabled=True,
+            # 🎯 STRUCTURAL CHANGE: Using Markdown instead of text_area to pop bold and color text formatting cleanly
+            st.markdown(
+                "### **Vector-Matched Examination Regulations (Prüfungsordnung)**"
             )
+            st.markdown(rag_output, unsafe_allow_html=True)
         else:
             st.warning(
                 "⚠️ Baseline pipeline configurations missing. Please ensure your machine learning asset files (.pkl) are pushed under the /models directory to activate real-time analytics."
             )
     else:
-        # Placeholder view before clicking the button
         st.info(
             "💡 Adjust student parameter attributes inside the sidebar panel and click **'Calculate Risk & Match Regulations'** to process diagnostic indicators."
         )
