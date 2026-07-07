@@ -1,203 +1,181 @@
-import os
-import joblib
-import pandas as pd
 import streamlit as st
-from openai import OpenAI
+import numpy as np
+import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
-# ==============================================================================
-# 1. INITIALIZATION & SECRETS CONFIGURATION
-# ==============================================================================
-st.set_page_config(
-    page_title="EduMatch: Advisor Dashboard", page_icon="🎓", layout="wide"
-)
+# =====================================================================
+# 📚 STEP 1: INITIALIZE THE SEMANTIC VECTOR RAG ENGINE
+# =====================================================================
+class SemanticVectorRAG:
+    """Upgraded RAG Engine using mathematical vector spaces and cosine similarity
+    to search legal clauses based on descriptive risk keywords.
+    """
+    def __init__(self):
+        # Raw unstructured regulatory text repository
+        self.documents = [
+            {
+                "id": "[PO-101]",
+                "title": "Academic Progression Standard",
+                "text": "Gemäß § 12 der Prüfungsordnung müssen Studierende bis zum Ende des zweiten Fachsemesters mindestens 30 ECTS-Punkte erbracht haben. Bei Unterschreitung dieser Schwelle von 15 ECTS pro Semester erfolgt eine automatische Einladung zur obligatorischen Studienberatung.",
+                "keywords": "low ects credit deficit academic warning failed modules progression"
+            },
+            {
+                "id": "[PO-201]",
+                "title": "Structural Leave of Absence (Urlaubssemester)",
+                "text": "Laut § 18 der Immatrikulationsordnung können reife Studierende oder Erwerbstätige bei nachgewiesener Belastung ein Urlaubssemester beantragen. Während dieses Zeitraums ruhen die regulären ECTS-Fristen, wodurch eine Exmatrikulation wegen Fristüberschreitung abgewendet wird.",
+                "keywords": "mature student age older working employment adjustment break pause"
+            },
+            {
+                "id": "[PO-301]",
+                "title": "BAföG Progress Verification",
+                "text": "Nach § 48 BAföG ist zum Ende des 4. Fachsemesters ein positiver Leistungsnachweis (Formblatt 5) vorzulegen. Eine frühzeitige Stabilisierung der ECTS-Zahlen im 1. und 2. Semester sichert den kontinuierlichen Erhalt der Bundesförderung und minimiert das Abbruchrisiko.",
+                "keywords": "bafoeg financial aid recipient state funding grant verification support"
+            },
+            {
+                "id": "[PO-302]",
+                "title": "Hardship Applications & Installment Deferrals",
+                "text": "Nach § 23 der Gebührenordnung führt ein Rückstand bei den Semesterbeiträgen zur Einleitung des Exmatrikulationsverfahrens. Betroffene Studierende können beim Studierendenwerk einen Härtefallantrag stellen, um eine Stundung oder Ratenzahlung der Rückstände zu vereinbaren.",
+                "keywords": "fee arrears debt unpaid tuition bursar money outstanding balance delinquency"
+            }
+        ]
+        
+        # Build vector database metrics
+        self.corpus = [doc["keywords"] for doc in self.documents]
+        self.vectorizer = TfidfVectorizer()
+        self.vector_database = self.vectorizer.fit_transform(self.corpus)
 
-# Safely pulls the Groq API key out under the 'OPENAI_API_KEY' name to match dashboard settings
-if "OPENAI_API_KEY" in st.secrets:
-    openai_api_key = st.secrets["OPENAI_API_KEY"]
-elif "OPENAI_API_KEY" in os.environ:
-    openai_api_key = os.environ["OPENAI_API_KEY"]
-else:
-    st.error("Missing 'OPENAI_API_KEY' in Environment Secrets!")
-    st.info(
-        "Please go to your platform's Space/App Settings -> Secrets -> Add a secret named 'OPENAI_API_KEY' containing your Groq API key (gsk_...)."
-    )
-    st.stop()
-
-# Initialize the OpenAI client wrapper redirected directly to Groq's servers
-client = OpenAI(api_key=openai_api_key, base_url="https://api.groq.com/openai/v1")
-
-
-# Simulating your mock RAG Knowledge Engine placeholder
-class MockRagEngine:
-
-    def __init__(self, api_client):
-        self.api_client = api_client
-
-    def retrieve_legal_context(self, profile):
-        # Fallback evaluation matching your metrics
-        if profile["Fee_Arrears"] == 1:
-            return [
-                {
-                    "clause_id": "§ 12 Abs. 3 HochSchG",
-                    "text": "Exmatriculation due to default on semester fee payments after warnings.",
-                }
-            ]
-        elif profile["ECTS_Earned_Sem1"] + profile["ECTS_Earned_Sem2"] < 30:
-            return [
-                {
-                    "clause_id": "§ 45 MPO",
-                    "text": "Compulsory academic advisory session required due to credit deficit below baseline benchmarks.",
-                }
-            ]
-        return []
+    def query_vector_space(self, student_profile, threshold=0.15):
+        """Converts incoming anomalies into a semantic query vector and computes matching scores."""
+        query_terms = []
+        if student_profile.get("ECTS_Earned_Sem2", 30) < 15:
+            query_terms.append("low ects credit deficit warning failed progression")
+        if student_profile.get("Age_At_Enrollment", 20) > 26 and student_profile.get("ECTS_Earned_Sem2", 30) < 5:
+            query_terms.append("mature student age older adjustment struggle")
+        if student_profile.get("Fee_Arrears", 0) == 1:
+            query_terms.append("fee arrears debt unpaid tuition outstanding balance")
+        if student_profile.get("BAfoeg_Status", 0) == 1 and student_profile.get("ECTS_Earned_Sem2", 30) < 20:
+            query_terms.append("bafoeg financial aid funding support review")
+            
+        if not query_terms:
+            return "✅ Clear Standing: No critical regulatory anomalies vector-matched."
+            
+        combined_query = " ".join(query_terms)
+        query_vector = self.vectorizer.transform([combined_query])
+        similarity_scores = cosine_similarity(query_vector, self.vector_database).flatten()
+        
+        results = ""
+        match_count = 1
+        for idx, score in enumerate(similarity_scores):
+            if score >= threshold:
+                doc = self.documents[idx]
+                results += f"📄 [{match_count}] {doc['id']} {doc['title']} (Vector Match Score: {score:.2f})\n"
+                results += f"   Regulatory Context: {doc['text']}\n\n"
+                match_count += 1
+                
+        return results if results else "✅ Clear Standing: Similarity values fell below tracking threshold."
 
 
+# Instantiate the semantic engine
 @st.cache_resource
-def load_analytics_assets():
-    try:
-        model = joblib.load("models/german_retention_model.pkl")
-        scaler = joblib.load("models/scaler.pkl")
-        kmeans = joblib.load("models/kmeans_model.pkl")
-        x_train_columns = (
-            None  # Populated dynamically via training layout references if required
-        )
-    except FileNotFoundError:
-        # Graceful fallback objects if models are missing during test phases
-        st.warning(
-            "⚠️ Warning: Pre-trained machine learning asset binaries not found under /models directory. Initializing testing fallbacks..."
-        )
-        model = None
-        scaler = None
-        kmeans = None
-        x_train_columns = None
+def load_semantic_rag():
+    return SemanticVectorRAG()
 
-    return model, scaler, kmeans, x_train_columns
+semantic_rag_engine = load_semantic_rag()
 
 
-# Unpacking global cached assets safely
-german_retention_model, scaler, kmeans, X_train_cols = load_analytics_assets()
+# =====================================================================
+# 🎨 STEP 2: STREAMLIT FRONT-END UI DEPLOYMENT LAYOUT
+# =====================================================================
+st.set_page_config(page_title="EduMatch Dashboard", page_icon="🎓", layout="wide")
 
-# Instantiate the engine globally using our configured endpoint client
-rag_engine = MockRagEngine(api_client=client)
-
-# ==============================================================================
-# 2. STREAMLIT USER INTERFACE LAYOUT
-# ==============================================================================
-st.title(
-    "EduMatch: Predictive Student Retention Pipeline With Advisor Decision Dashboard"
-)
+st.title("EduMatch: Predictive Student Retention Pipeline With Advisor Decision Dashboard")
 st.markdown(
     "Input a student's administrative, economic, and academic performance vectors "
     "to calculate empirical exmatriculation risks, map intervention segments, and extract "
-    "matched legal regulatory provisions."
+    "matched legal regulatory provisions via mathematical cosine similarity."
 )
 
-with st.sidebar:
-    st.header("Student Parameters")
-    age = st.slider("Age at Enrollment", 17, 60, 22, step=1)
+st.write("---")
+
+# Split layout cleanly into an Input Sidebar column and Results Display window
+col1, col2 = st.columns([1, 2])
+
+with col1:
+    st.header("👤 Student Profile Inputs")
+    
+    age = st.slider("Age at Enrollment", 17, 60, value=22, step=1)
     gender = st.radio("Gender Identity", ["Female", "Male"])
-    displaced = st.radio("Relocated Student (Displaced Status)", ["Yes", "No"])
-    bafoeg = st.radio("Federal Financial Aid Status (BAföG)", ["Yes (Recipient)", "No"])
-    arrears = st.radio("Semester Tuition Fee Arrears", ["Yes (Delinquent)", "No"])
+    displaced = st.radio("Relocated Student (Displaced Status)", ["Yes", "No"], index=1)
+    bafoeg = st.radio("Federal Financial Aid Status (BAföG)", ["Yes (Recipient)", "No"], index=1)
+    arrears = st.radio("Semester Tuition Fee Arrears", ["Yes (Delinquent)", "No"], index=1)
+    
+    st.markdown("**Academic Performance Data**")
+    ects_s1 = st.slider("Earned ECTS (1st Semester)", 10, 40, value=30, step=5)
+    grade_s1 = st.slider("Grade Average Point (1st Semester)", 1.0, 5.0, value=2.0, step=0.1)
+    ects_s2 = st.slider("Earned ECTS (2nd Semester)", 10, 40, value=25, step=5)
+    grade_s2 = st.slider("Grade Average Point (2nd Semester)", 1.0, 5.0, value=2.3, step=0.1)
 
-    st.subheader("Academic Milestones")
-    # --- 🎯 SYNCED METRIC SLIDERS: BOUNDED ECTS 10-40 & GERMAN GRADESCALE 1.0-5.0 ---
-    ects_s1 = st.slider("Earned ECTS (1st Semester)", 10, 40, 30, step=5)
-    grade_s1 = st.slider("Grade Average Point (1st Semester)", 1.0, 5.0, 2.0, step=0.1)
-    ects_s2 = st.slider("Earned ECTS (2nd Semester)", 10, 40, 25, step=5)
-    grade_s2 = st.slider("Grade Average Point (2nd Semester)", 1.0, 5.0, 2.3, step=0.1)
-
-
-# ==============================================================================
-# 3. PREDICTION & PIPELINE LOGIC
-# ==============================================================================
-def run_prediction():
-    input_data = pd.DataFrame(
-        [
-            {
-                "Grade_Avg_Sem1": grade_s1,
-                "Grade_Avg_Sem2": grade_s2,
-                "BAfoeg_Status": 1 if bafoeg == "Yes (Recipient)" else 0,
-                "Fee_Arrears": 1 if arrears == "Yes (Delinquent)" else 0,
-                "Displaced_Status": 1 if displaced == "Yes" else 0,
-                "Gender": 1 if gender == "Male" else 0,
-                "Age_At_Enrollment": age,
-                "ECTS_Earned_Sem1": ects_s1,
-                "ECTS_Earned_Sem2": ects_s2,
-            }
-        ]
-    )
-
-    # Force strict alignment with model input order expectations if a specific reference mapping exists
-    if X_train_cols is not None:
-        input_data = input_data[X_train_cols]
-
-    # Calculate values utilizing pre-trained model instances if safely imported
-    if german_retention_model is not None:
-        if hasattr(german_retention_model, "predict_proba"):
-            risk_prob = german_retention_model.predict_proba(input_data)[0][1]
-        else:
-            risk_prob = float(german_retention_model.predict(input_data)[0])
-    else:
-        # Mock calculation logic mirroring real model outputs for reliable fallback pipeline operations
-        base_risk = 0.15
-        if arrears == "Yes (Delinquent)":
-            base_risk += 0.35
-        if (ects_s1 + ects_s2) < 40:
-            base_risk += 0.40
-        risk_prob = min(base_risk, 0.98)
-
-    if scaler is not None and kmeans is not None:
+# =====================================================================
+# 🧭 STEP 3: RUN LIVE BACKEND INTERACTION PIPELINE
+# =====================================================================
+with col2:
+    st.header("📊 Advisor Analytical Output")
+    
+    # Pack parameters into data vector schema matching model constraints
+    input_data = pd.DataFrame([{
+        "Grade_Avg_Sem1": grade_s1,
+        "Grade_Avg_Sem2": grade_s2,
+        "BAfoeg_Status": 1 if bafoeg == "Yes (Recipient)" else 0,
+        "Fee_Arrears": 1 if arrears == "Yes (Delinquent)" else 0,
+        "Displaced_Status": 1 if displaced == "Yes" else 0,
+        "Gender": 1 if gender == "Male" else 0,
+        "Age_At_Enrollment": age,
+        "ECTS_Earned_Sem1": ects_s1,
+        "ECTS_Earned_Sem2": ects_s2
+    }])
+    
+    # Enforce exact sorting to match baseline training schema
+    # (Assumes your workspace still holds 'X_train', 'german_retention_model', 'scaler', and 'kmeans' references)
+    try:
+        input_data = input_data[X_train.columns]
+        
+        # Calculate continuously optimized classification risk probabilities
+        risk_probability = german_retention_model.predict_proba(input_data)[0][1]
+        
+        # Standardize features and evaluate unsupervised cluster allocations
         scaled_input = scaler.transform(input_data)
-        cluster = kmeans.predict(scaled_input)[0]
-    else:
-        # Mock clustering fallback mapping logic
-        if arrears == "Yes (Delinquent)":
-            cluster = 2
-        elif (ects_s1 + ects_s2) < 35:
-            cluster = 1
+        assigned_cluster = kmeans.predict(scaled_input)[0]
+        
+        cluster_mapping = {
+            0: "Cluster 0: Stabilized Academic Deficit (Financial Aid Cushioned)",
+            1: "Cluster 1: Acute Academic Collapse (Severe Credit Deficit / Mature Students)",
+            2: "Cluster 2: Latent Socioeconomic Risk (High Grades, Unpaid Semester Fees)"
+        }
+        cluster_name = cluster_mapping.get(assigned_cluster, "Unknown Cluster Profile")
+        
+        # Execute local Semantic Vector database lookup
+        student_profile_dict = input_data.iloc[0].to_dict()
+        rag_output = semantic_rag_engine.query_vector_space(student_profile_dict)
+        
+        # Display Box A: Classification Probability output rounded directly with no decimals
+        status_indicator = "🔴 CRITICAL RISK" if risk_probability > 0.5 else "🟢 STABLE STATUS"
+        
+        if risk_probability > 0.5:
+            st.error(f"**Operational Status:** {status_indicator}\n\n**Calculated Exmatriculation Probability:** {risk_probability:.0%}")
         else:
-            cluster = 0
-
-    return risk_prob, cluster, input_data.iloc[0].to_dict()
-
-
-# ==============================================================================
-# 4. CONDITIONAL RENDER (TRIGGERED ON CLICK)
-# ==============================================================================
-if st.button("Calculate Risk & Match Regulations", type="primary"):
-    with st.spinner("Processing prediction vectors & generating legal context..."):
-        risk_prob, cluster_id, profile = run_prediction()
-
-    st.divider()
-
-    st.header("Predictive Risk Indicators")
-    status = "🔴 CRITICAL RISK" if risk_prob > 0.5 else "🟢 STABLE STATUS"
-
-    if "CRITICAL" in status:
-        st.error(f"Operational Status: {status}")
-    else:
-        st.success(f"Operational Status: {status}")
-
-    # --- 🎯 SYNCED OUTPUT: Uses :.0% to round to whole percentage values ---
-    st.metric(label="Calculated Exmatriculation Probability", value=f"{risk_prob:.0%}")
-
-    st.header("Assigned Intervention Cohort")
-    cluster_mapping = {
-        0: "Cluster 0: Stabilized Academic Deficit (Financial Aid Cushioned)",
-        1: "Cluster 1: Acute Academic Collapse (Severe Credit Deficit / Mature Students)",
-        2: "Cluster 2: Latent Socioeconomic Risk (High Grades, Unpaid Semester Fees)",
-    }
-    st.info(cluster_mapping.get(cluster_id, "Unknown Cluster Profile"))
-
-    st.header("RAG: Contextualized Examination Regulations (Prüfungsordnung)")
-    docs = rag_engine.retrieve_legal_context(profile)
-
-    if docs:
-        for idx, doc in enumerate(docs, 1):
-            with st.expander(f"📄 [{idx}] {doc['clause_id']}", expanded=True):
-                st.markdown(f"**Regulatory Context:** {doc['text']}")
-    else:
-        st.success(
-            "✅ Clear Standing: No critical regulatory violations or credit deficits identified."
+            st.success(f"**Operational Status:** {status_indicator}\n\n**Calculated Exmatriculation Probability:** {risk_probability:.0%}")
+            
+        # Display Box B: Cluster Assignments
+        st.info(f"**🧭 Assigned Intervention Cohort:**\n\n{cluster_name}")
+        
+        # Display Box C: Upgraded Vector Search RAG context
+        st.subheader("📚 Legal Compliance & Regulatory Directives")
+        st.text_area(
+            label="Vector-Matched Examination Regulations (Prüfungsordnung)",
+            value=rag_output,
+            height=250
         )
+        
+    except NameError:
+        st.warning("⚠️ Baseline pipeline configurations missing. Please run your model training cells up to Phase 4 before firing up Streamlit context wrappers.")
