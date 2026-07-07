@@ -1,12 +1,16 @@
-import streamlit as st
-import pandas as pd
-import joblib
 import os
+import joblib
+import pandas as pd
+import streamlit as st
 from openai import OpenAI
 
 # ==============================================================================
 # 1. INITIALIZATION & SECRETS CONFIGURATION
 # ==============================================================================
+st.set_page_config(
+    page_title="EduMatch: Advisor Dashboard", page_icon="🎓", layout="wide"
+)
+
 # Safely pulls the Groq API key out under the 'OPENAI_API_KEY' name to match dashboard settings
 if "OPENAI_API_KEY" in st.secrets:
     openai_api_key = st.secrets["OPENAI_API_KEY"]
@@ -25,11 +29,12 @@ client = OpenAI(api_key=openai_api_key, base_url="https://api.groq.com/openai/v1
 
 # Simulating your mock RAG Knowledge Engine placeholder
 class MockRagEngine:
+
     def __init__(self, api_client):
         self.api_client = api_client
 
     def retrieve_legal_context(self, profile):
-        # A simple fallback system to ensure your RAG layout runs cleanly
+        # Fallback evaluation matching your metrics
         if profile["Fee_Arrears"] == 1:
             return [
                 {
@@ -44,17 +49,6 @@ class MockRagEngine:
                     "text": "Compulsory academic advisory session required due to credit deficit below baseline benchmarks.",
                 }
             ]
-
-        # Example of how to add a simple live test call using a Groq model if needed:
-        # try:
-        #     chat_completion = self.api_client.chat.completions.create(
-        #         messages=[{"role": "user", "content": "Write a 1-sentence reminder about completing credit points."}],
-        #         model="llama3-8b-8192",
-        #     )
-        #     return [{"clause_id": "Groq Engine Live Check", "text": chat_completion.choices[0].message.content}]
-        # except Exception:
-        #     pass
-
         return []
 
 
@@ -63,9 +57,10 @@ def load_analytics_assets():
     try:
         model = joblib.load("models/german_retention_model.pkl")
         scaler = joblib.load("models/scaler.pkl")
-        # FIXED: Mapped to match your true filename 'kmeans_model.pkl' committed to repository
         kmeans = joblib.load("models/kmeans_model.pkl")
-        x_train_columns = None
+        x_train_columns = (
+            None  # Populated dynamically via training layout references if required
+        )
     except FileNotFoundError:
         # Graceful fallback objects if models are missing during test phases
         st.warning(
@@ -79,7 +74,7 @@ def load_analytics_assets():
     return model, scaler, kmeans, x_train_columns
 
 
-# Unpacking the global cached assets cleanly
+# Unpacking global cached assets safely
 german_retention_model, scaler, kmeans, X_train_cols = load_analytics_assets()
 
 # Instantiate the engine globally using our configured endpoint client
@@ -104,14 +99,11 @@ with st.sidebar:
     arrears = st.radio("Semester Tuition Fee Arrears", ["Yes (Delinquent)", "No"])
 
     st.subheader("Academic Milestones")
-    ects_s1 = st.slider("Earned ECTS (1st Semester)", 0, 40, 30, step=5)
-    grade_s1 = st.slider(
-        "Grade Average Point (1st Semester)", 0.0, 20.0, 12.0, step=0.1
-    )
-    ects_s2 = st.slider("Earned ECTS (2nd Semester)", 0, 40, 25, step=5)
-    grade_s2 = st.slider(
-        "Grade Average Point (2nd Semester)", 0.0, 20.0, 11.5, step=0.1
-    )
+    # --- UPDATED SLIDERS: BOUNDED ECTS 10-40 & GERMAN GRADESCALE 1.0-5.0 ---
+    ects_s1 = st.slider("Earned ECTS (1st Semester)", 10, 40, 30, step=5)
+    grade_s1 = st.slider("Grade Average Point (1st Semester)", 1.0, 5.0, 2.0, step=0.1)
+    ects_s2 = st.slider("Earned ECTS (2nd Semester)", 10, 40, 25, step=5)
+    grade_s2 = st.slider("Grade Average Point (2nd Semester)", 1.0, 5.0, 2.3, step=0.1)
 
 
 # ==============================================================================
@@ -134,14 +126,18 @@ def run_prediction():
         ]
     )
 
-    # Calculate values utilizing our pre-trained model instances if safely imported
+    # Force strict alignment with model input order expectations if a specific reference mapping exists
+    if X_train_cols is not None:
+        input_data = input_data[X_train_cols]
+
+    # Calculate values utilizing pre-trained model instances if safely imported
     if german_retention_model is not None:
         if hasattr(german_retention_model, "predict_proba"):
             risk_prob = german_retention_model.predict_proba(input_data)[0][1]
         else:
             risk_prob = float(german_retention_model.predict(input_data)[0])
     else:
-        # Mock calculation logic mirroring real model outputs for reliable interface tests
+        # Mock calculation logic mirroring real model outputs for reliable fallback pipeline operations
         base_risk = 0.15
         if arrears == "Yes (Delinquent)":
             base_risk += 0.35
@@ -153,6 +149,7 @@ def run_prediction():
         scaled_input = scaler.transform(input_data)
         cluster = kmeans.predict(scaled_input)[0]
     else:
+        # Mock clustering fallback mapping logic
         if arrears == "Yes (Delinquent)":
             cluster = 2
         elif (ects_s1 + ects_s2) < 35:
@@ -166,15 +163,16 @@ def run_prediction():
 # ==============================================================================
 # 4. CONDITIONAL RENDER (TRIGGERED ON CLICK)
 # ==============================================================================
-if st.button("Calculate Risk & Match Regulations"):
-    risk_prob, cluster_id, profile = run_prediction()
+if st.button("Calculate Risk & Match Regulations", type="primary"):
+    with st.spinner("Processing prediction vectors & generating legal context..."):
+        risk_prob, cluster_id, profile = run_prediction()
 
     st.divider()
 
     st.header("Predictive Risk Indicators")
-    status = "CRITICAL RISK" if risk_prob > 0.5 else "STABLE STATUS"
+    status = "🔴 CRITICAL RISK" if risk_prob > 0.5 else "🟢 STABLE STATUS"
 
-    if status == "CRITICAL RISK":
+    if "CRITICAL" in status:
         st.error(f"Operational Status: {status}")
     else:
         st.success(f"Operational Status: {status}")
@@ -194,9 +192,9 @@ if st.button("Calculate Risk & Match Regulations"):
 
     if docs:
         for idx, doc in enumerate(docs, 1):
-            with st.expander(f"[{idx}] {doc['clause_id']}", expanded=True):
+            with st.expander(f"📄 [{idx}] {doc['clause_id']}", expanded=True):
                 st.markdown(f"**Regulatory Context:** {doc['text']}")
     else:
-        st.write(
-            "Clear Standing: No critical regulatory violations or credit deficits identified."
+        st.success(
+            "✅ Clear Standing: No critical regulatory violations or credit deficits identified."
         )
