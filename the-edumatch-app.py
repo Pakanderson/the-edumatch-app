@@ -83,7 +83,9 @@ rag_engine = MockRagEngine(api_client=client)
 # ==============================================================================
 # 2. STREAMLIT USER INTERFACE LAYOUT
 # ==============================================================================
-st.title("EduMatch: Predictive Retention Pipeline & Advisor Dashboard")
+st.title(
+    "EduMatch: Predictive Student Retention Pipeline With Advisor Decision Dashboard"
+)
 st.markdown(
     "Input a student's administrative, economic, and academic performance vectors "
     "to calculate empirical exmatriculation risks, map intervention segments, and extract "
