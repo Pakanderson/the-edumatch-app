@@ -202,6 +202,6 @@ with col2:
             height=250,
             disabled=True
         )
-    else:
+else:
         # Graceful fallback visual state if .pkl binaries aren't found in repository models/ folder
-        st.warning("⚠️ Baseline pipeline configurations missing.
+        st.warning("⚠️ Baseline pipeline configurations missing. Please ensure your machine learning asset files (.pkl) are pushed under the /models directory to activate real-time analytics.")
