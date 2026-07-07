@@ -1,24 +1,35 @@
 import streamlit as st
 import pandas as pd
 import joblib
+import os
+from openai import OpenAI
 
 # ==============================================================================
 # 1. INITIALIZATION & SECRETS CONFIGURATION
 # ==============================================================================
-try:
+# Safely pulls the Groq API key out under the 'OPENAI_API_KEY' name to match dashboard settings
+if "OPENAI_API_KEY" in st.secrets:
     openai_api_key = st.secrets["OPENAI_API_KEY"]
-except KeyError:
-    st.error("Missing 'OPENAI_API_KEY' in Streamlit Secrets!")
+elif "OPENAI_API_KEY" in os.environ:
+    openai_api_key = os.environ["OPENAI_API_KEY"]
+else:
+    st.error("Missing 'OPENAI_API_KEY' in Environment Secrets!")
+    st.info(
+        "Please go to Hugging Face Spaces Settings -> Variables and secrets -> Add a secret named 'OPENAI_API_KEY' containing your Groq API key (gsk_...)."
+    )
     st.stop()
+
+# Initialize the OpenAI client wrapper redirected directly to Groq's servers
+client = OpenAI(api_key=openai_api_key, base_url="https://api.groq.com/openai/v1")
 
 
 # Simulating your mock RAG Knowledge Engine placeholder
 class MockRagEngine:
-    def __init__(self, api_key):
-        self.api_key = api_key
+    def __init__(self, api_client):
+        self.api_client = api_client
 
     def retrieve_legal_context(self, profile):
-        # A simple fallback system to ensure your RAG layout doesn't crash
+        # A simple fallback system to ensure your RAG layout runs cleanly
         if profile["Fee_Arrears"] == 1:
             return [
                 {
@@ -33,6 +44,17 @@ class MockRagEngine:
                     "text": "Compulsory academic advisory session required due to credit deficit below baseline benchmarks.",
                 }
             ]
+
+        # Example of how to add a simple live test call using a Groq model if needed:
+        # try:
+        #     chat_completion = self.api_client.chat.completions.create(
+        #         messages=[{"role": "user", "content": "Write a 1-sentence reminder about completing credit points."}],
+        #         model="llama3-8b-8192",
+        #     )
+        #     return [{"clause_id": "Groq Engine Live Check", "text": chat_completion.choices[0].message.content}]
+        # except Exception:
+        #     pass
+
         return []
 
 
@@ -41,14 +63,15 @@ def load_analytics_assets():
     try:
         model = joblib.load("models/german_retention_model.pkl")
         scaler = joblib.load("models/scaler.pkl")
-        kmeans = joblib.load("models/kmeans.pkl")
-        x_train_columns = joblib.load("models/x_train_columns.pkl")
+        # FIXED: Mapped to match your true filename 'kmeans_model.pkl' committed to repository
+        kmeans = joblib.load("models/kmeans_model.pkl")
+        x_train_columns = None
     except FileNotFoundError:
-        # Fallback objects if models are missing during test phases
+        # Graceful fallback objects if models are missing during test phases
         st.warning(
             "⚠️ Warning: Pre-trained machine learning asset binaries not found under /models directory. Initializing testing fallbacks..."
         )
-        model = joblib.load("models/german_retention_model.pkl") if False else None
+        model = None
         scaler = None
         kmeans = None
         x_train_columns = None
@@ -56,11 +79,11 @@ def load_analytics_assets():
     return model, scaler, kmeans, x_train_columns
 
 
-# Unpacking the global cached assets cleanly (FIXED COMPONENT)
+# Unpacking the global cached assets cleanly
 german_retention_model, scaler, kmeans, X_train_cols = load_analytics_assets()
 
-# Instantiate the engine globally (FIXED COMPONENT)
-rag_engine = MockRagEngine(api_key=openai_api_key)
+# Instantiate the engine globally using our configured endpoint client
+rag_engine = MockRagEngine(api_client=client)
 
 # ==============================================================================
 # 2. STREAMLIT USER INTERFACE LAYOUT
@@ -111,14 +134,14 @@ def run_prediction():
         ]
     )
 
-    # Calculate fallback values if binaries are missing in repository
+    # Calculate values utilizing our pre-trained model instances if safely imported
     if german_retention_model is not None:
         if hasattr(german_retention_model, "predict_proba"):
             risk_prob = german_retention_model.predict_proba(input_data)[0][1]
         else:
             risk_prob = float(german_retention_model.predict(input_data)[0])
     else:
-        # Mock calculation logic mirroring real model outputs for testing
+        # Mock calculation logic mirroring real model outputs for reliable interface tests
         base_risk = 0.15
         if arrears == "Yes (Delinquent)":
             base_risk += 0.35
