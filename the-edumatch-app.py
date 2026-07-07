@@ -31,7 +31,7 @@ def load_analytics_assets():
 
     return model, scaler, kmeans, x_train_columns
 
-# Unpack models globally 
+# Unpack models globally
 german_retention_model, scaler, kmeans, X_train_cols = load_analytics_assets()
 
 
@@ -129,13 +129,13 @@ col1, col2 = st.columns([1, 2])
 
 with col1:
     st.header("👤 Student Profile Inputs")
-    
+
     age = st.slider("Age at Enrollment", 17, 60, value=22, step=1)
     gender = st.radio("Gender Identity", ["Female", "Male"])
     displaced = st.radio("Relocated Student (Displaced Status)", ["Yes", "No"], index=1)
     bafoeg = st.radio("Federal Financial Aid Status (BAföG)", ["Yes (Recipient)", "No"], index=1)
     arrears = st.radio("Semester Tuition Fee Arrears", ["Yes (Delinquent)", "No"], index=1)
-    
+
     st.markdown("**Academic Performance Data**")
     ects_s1 = st.slider("Earned ECTS (1st Semester)", 10, 40, value=30, step=5)
     grade_s1 = st.slider("Grade Average Point (1st Semester)", 1.0, 5.0, value=2.0, step=0.1)
@@ -148,60 +148,72 @@ with col1:
 # =====================================================================
 with col2:
     st.header("📊 Advisor Analytical Output")
-    
+
     # Structure frontend data vectors
-    input_data = pd.DataFrame([{
-        "Grade_Avg_Sem1": grade_s1,
-        "Grade_Avg_Sem2": grade_s2,
-        "BAfoeg_Status": 1 if bafoeg == "Yes (Recipient)" else 0,
-        "Fee_Arrears": 1 if arrears == "Yes (Delinquent)" else 0,
-        "Displaced_Status": 1 if displaced == "Yes" else 0,
-        "Gender": 1 if gender == "Male" else 0,
-        "Age_At_Enrollment": age,
-        "ECTS_Earned_Sem1": ects_s1,
-        "ECTS_Earned_Sem2": ects_s2
-    }])
-    
+    input_data = pd.DataFrame(
+        [
+            {
+                "Grade_Avg_Sem1": grade_s1,
+                "Grade_Avg_Sem2": grade_s2,
+                "BAfoeg_Status": 1 if bafoeg == "Yes (Recipient)" else 0,
+                "Fee_Arrears": 1 if arrears == "Yes (Delinquent)" else 0,
+                "Displaced_Status": 1 if displaced == "Yes" else 0,
+                "Gender": 1 if gender == "Male" else 0,
+                "Age_At_Enrollment": age,
+                "ECTS_Earned_Sem1": ects_s1,
+                "ECTS_Earned_Sem2": ects_s2,
+            }
+        ]
+    )
+
     # Force alignment with feature orders
     if X_train_cols is not None:
         input_data = input_data[X_train_cols]
-        
+
     # Check if files were successfully tracked by asset cache loader
     if german_retention_model is not None:
         # Run live model evaluation pipelines
         risk_probability = german_retention_model.predict_proba(input_data)[0][1]
         scaled_input = scaler.transform(input_data)
         assigned_cluster = kmeans.predict(scaled_input)[0]
-        
+
         cluster_mapping = {
             0: "Cluster 0: Stabilized Academic Deficit (Financial Aid Cushioned)",
             1: "Cluster 1: Acute Academic Collapse (Severe Credit Deficit / Mature Students)",
-            2: "Cluster 2: Latent Socioeconomic Risk (High Grades, Unpaid Semester Fees)"
+            2: "Cluster 2: Latent Socioeconomic Risk (High Grades, Unpaid Semester Fees)",
         }
         cluster_name = cluster_mapping.get(assigned_cluster, "Unknown Cluster Profile")
-        
+
         # Execute local Semantic Vector RAG Database query lookup
         student_profile_dict = input_data.iloc[0].to_dict()
         rag_output = semantic_rag_engine.query_vector_space(student_profile_dict)
-        
+
         # Render Box A: Status & Probability rounded cleanly to whole values (:0%)
-        status_indicator = "🔴 CRITICAL RISK" if risk_probability > 0.5 else "🟢 STABLE STATUS"
+        status_indicator = (
+            "🔴 CRITICAL RISK" if risk_probability > 0.5 else "🟢 STABLE STATUS"
+        )
         if risk_probability > 0.5:
-            st.error(f"**Operational Status:** {status_indicator}\n\n**Calculated Exmatriculation Probability:** {risk_probability:.0%}")
+            st.error(
+                f"**Operational Status:** {status_indicator}\n\n**Calculated Exmatriculation Probability:** {risk_probability:.0%}"
+            )
         else:
-            st.success(f"**Operational Status:** {status_indicator}\n\n**Calculated Exmatriculation Probability:** {risk_probability:.0%}")
-            
+            st.success(
+                f"**Operational Status:** {status_indicator}\n\n**Calculated Exmatriculation Probability:** {risk_probability:.0%}"
+            )
+
         # Render Box B: Cohort Cluster Outputs
         st.info(f"**🧭 Assigned Intervention Cohort:**\n\n{cluster_name}")
-        
+
         # Render Box C: Vector Search RAG text area context layout
         st.subheader("📚 Legal Compliance & Regulatory Directives")
         st.text_area(
             label="Vector-Matched Examination Regulations (Prüfungsordnung)",
             value=rag_output,
             height=250,
-            disabled=True
+            disabled=True,
         )
-else:
+    else:
         # Graceful fallback visual state if .pkl binaries aren't found in repository models/ folder
-        st.warning("⚠️ Baseline pipeline configurations missing. Please ensure your machine learning asset files (.pkl) are pushed under the /models directory to activate real-time analytics.")
+        st.warning(
+            "⚠️ Baseline pipeline configurations missing. Please ensure your machine learning asset files (.pkl) are pushed under the /models directory to activate real-time analytics."
+        )
