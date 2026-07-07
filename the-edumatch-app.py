@@ -5,6 +5,7 @@ import joblib
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
+
 # =====================================================================
 # 📦 STEP 1: INITIALIZE PRE-TRAINED MACHINE LEARNING ASSETS
 # =====================================================================
@@ -14,22 +15,29 @@ def load_analytics_assets():
         model = joblib.load("models/german_retention_model.pkl")
         scaler = joblib.load("models/scaler.pkl")
         kmeans = joblib.load("models/kmeans_model.pkl")
-        
+
         # Extract features directly from the trained model to avoid missing X_train errors
         if hasattr(model, "feature_names_in_"):
             x_train_columns = list(model.feature_names_in_)
         else:
             # Fallback explicit column layout order matching baseline training vectors
             x_train_columns = [
-                "Grade_Avg_Sem1", "Grade_Avg_Sem2", "BAfoeg_Status", 
-                "Fee_Arrears", "Displaced_Status", "Gender", 
-                "Age_At_Enrollment", "ECTS_Earned_Sem1", "ECTS_Earned_Sem2"
+                "Grade_Avg_Sem1",
+                "Grade_Avg_Sem2",
+                "BAfoeg_Status",
+                "Fee_Arrears",
+                "Displaced_Status",
+                "Gender",
+                "Age_At_Enrollment",
+                "ECTS_Earned_Sem1",
+                "ECTS_Earned_Sem2",
             ]
     except FileNotFoundError:
         # Graceful fallback objects if models are missing during test phases
         model, scaler, kmeans, x_train_columns = None, None, None, None
 
     return model, scaler, kmeans, x_train_columns
+
 
 # Unpack models globally
 german_retention_model, scaler, kmeans, X_train_cols = load_analytics_assets()
@@ -42,34 +50,35 @@ class SemanticVectorRAG:
     """Upgraded RAG Engine using mathematical vector spaces and cosine similarity
     to search legal clauses based on descriptive risk keywords.
     """
+
     def __init__(self):
         self.documents = [
             {
                 "id": "[PO-101]",
                 "title": "Academic Progression Standard",
                 "text": "Gemäß § 12 der Prüfungsordnung müssen Studierende bis zum Ende des zweiten Fachsemesters mindestens 30 ECTS-Punkte erbracht haben. Bei Unterschreitung dieser Schwelle von 15 ECTS pro Semester erfolgt eine automatische Einladung zur obligatorischen Studienberatung.",
-                "keywords": "low ects credit deficit academic warning failed modules progression"
+                "keywords": "low ects credit deficit academic warning failed modules progression",
             },
             {
                 "id": "[PO-201]",
                 "title": "Structural Leave of Absence (Urlaubssemester)",
                 "text": "Laut § 18 der Immatrikulationsordnung können reife Studierende oder Erwerbstätige bei nachgewiesener Belastung ein Urlaubssemester beantragen. Während dieses Zeitraums ruhen die regulären ECTS-Fristen, wodurch eine Exmatrikulation wegen Fristüberschreitung abgewendet wird.",
-                "keywords": "mature student age older working employment adjustment break pause"
+                "keywords": "mature student age older working employment adjustment break pause",
             },
             {
                 "id": "[PO-301]",
                 "title": "BAföG Progress Verification",
                 "text": "Nach § 48 BAföG ist zum Ende des 4. Fachsemesters ein positiver Leistungsnachweis (Formblatt 5) vorzulegen. Eine frühzeitige Stabilisierung der ECTS-Zahlen im 1. und 2. Semester sichert den kontinuierlichen Erhalt der Bundesförderung und minimiert das Abbruchrisiko.",
-                "keywords": "bafoeg financial aid recipient state funding grant verification support"
+                "keywords": "bafoeg financial aid recipient state funding grant verification support",
             },
             {
                 "id": "[PO-302]",
                 "title": "Hardship Applications & Installment Deferrals",
                 "text": "Nach § 23 der Gebührenordnung führt ein Rückstand bei den Semesterbeiträgen zur Einleitung des Exmatrikulationsverfahrens. Betroffene Studierende können beim Studierendenwerk einen Härtefallantrag stellen, um eine Stundung oder Ratenzahlung der Rückstände zu vereinbaren.",
-                "keywords": "fee arrears debt unpaid tuition bursar money outstanding balance delinquency"
-            }
+                "keywords": "fee arrears debt unpaid tuition bursar money outstanding balance delinquency",
+            },
         ]
-        
+
         self.corpus = [doc["keywords"] for doc in self.documents]
         self.vectorizer = TfidfVectorizer()
         self.vector_database = self.vectorizer.fit_transform(self.corpus)
@@ -78,20 +87,28 @@ class SemanticVectorRAG:
         query_terms = []
         if student_profile.get("ECTS_Earned_Sem2", 30) < 15:
             query_terms.append("low ects credit deficit warning failed progression")
-        if student_profile.get("Age_At_Enrollment", 20) > 26 and student_profile.get("ECTS_Earned_Sem2", 30) < 5:
+        if (
+            student_profile.get("Age_At_Enrollment", 20) > 26
+            and student_profile.get("ECTS_Earned_Sem2", 30) < 5
+        ):
             query_terms.append("mature student age older adjustment struggle")
         if student_profile.get("Fee_Arrears", 0) == 1:
             query_terms.append("fee arrears debt unpaid tuition outstanding balance")
-        if student_profile.get("BAfoeg_Status", 0) == 1 and student_profile.get("ECTS_Earned_Sem2", 30) < 20:
+        if (
+            student_profile.get("BAfoeg_Status", 0) == 1
+            and student_profile.get("ECTS_Earned_Sem2", 30) < 20
+        ):
             query_terms.append("bafoeg financial aid funding support review")
-            
+
         if not query_terms:
             return "✅ Clear Standing: No critical regulatory anomalies vector-matched."
-            
+
         combined_query = " ".join(query_terms)
         query_vector = self.vectorizer.transform([combined_query])
-        similarity_scores = cosine_similarity(query_vector, self.vector_database).flatten()
-        
+        similarity_scores = cosine_similarity(
+            query_vector, self.vector_database
+        ).flatten()
+
         results = ""
         match_count = 1
         for idx, score in enumerate(similarity_scores):
@@ -100,13 +117,18 @@ class SemanticVectorRAG:
                 results += f"📄 [{match_count}] {doc['id']} {doc['title']} (Vector Match Score: {score:.2f})\n"
                 results += f"   Regulatory Context: {doc['text']}\n\n"
                 match_count += 1
-                
-        return results if results else "✅ Clear Standing: Similarity values fell below tracking threshold."
+
+        return (
+            results
+            if results
+            else "✅ Clear Standing: Similarity values fell below tracking threshold."
+        )
 
 
 @st.cache_resource
 def load_semantic_rag():
     return SemanticVectorRAG()
+
 
 semantic_rag_engine = load_semantic_rag()
 
@@ -116,7 +138,9 @@ semantic_rag_engine = load_semantic_rag()
 # =====================================================================
 st.set_page_config(page_title="EduMatch Dashboard", page_icon="🎓", layout="wide")
 
-st.title("EduMatch: Predictive Student Retention Pipeline With Advisor Decision Dashboard")
+st.title(
+    "EduMatch: Predictive Student Retention Pipeline With Advisor Decision Dashboard"
+)
 st.markdown(
     "Input a student's administrative, economic, and academic performance vectors "
     "to calculate empirical exmatriculation risks, map intervention segments, and extract "
@@ -133,14 +157,22 @@ with col1:
     age = st.slider("Age at Enrollment", 17, 60, value=22, step=1)
     gender = st.radio("Gender Identity", ["Female", "Male"])
     displaced = st.radio("Relocated Student (Displaced Status)", ["Yes", "No"], index=1)
-    bafoeg = st.radio("Federal Financial Aid Status (BAföG)", ["Yes (Recipient)", "No"], index=1)
-    arrears = st.radio("Semester Tuition Fee Arrears", ["Yes (Delinquent)", "No"], index=1)
+    bafoeg = st.radio(
+        "Federal Financial Aid Status (BAföG)", ["Yes (Recipient)", "No"], index=1
+    )
+    arrears = st.radio(
+        "Semester Tuition Fee Arrears", ["Yes (Delinquent)", "No"], index=1
+    )
 
     st.markdown("**Academic Performance Data**")
     ects_s1 = st.slider("Earned ECTS (1st Semester)", 10, 40, value=30, step=5)
-    grade_s1 = st.slider("Grade Average Point (1st Semester)", 1.0, 5.0, value=2.0, step=0.1)
+    grade_s1 = st.slider(
+        "Grade Average Point (1st Semester)", 1.0, 5.0, value=2.0, step=0.1
+    )
     ects_s2 = st.slider("Earned ECTS (2nd Semester)", 10, 40, value=25, step=5)
-    grade_s2 = st.slider("Grade Average Point (2nd Semester)", 1.0, 5.0, value=2.3, step=0.1)
+    grade_s2 = st.slider(
+        "Grade Average Point (2nd Semester)", 1.0, 5.0, value=2.3, step=0.1
+    )
 
 
 # =====================================================================
