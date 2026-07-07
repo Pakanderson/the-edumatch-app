@@ -19,7 +19,7 @@ elif "OPENAI_API_KEY" in os.environ:
 else:
     st.error("Missing 'OPENAI_API_KEY' in Environment Secrets!")
     st.info(
-        "Please go to Hugging Face Spaces Settings -> Variables and secrets -> Add a secret named 'OPENAI_API_KEY' containing your Groq API key (gsk_...)."
+        "Please go to your platform's Space/App Settings -> Secrets -> Add a secret named 'OPENAI_API_KEY' containing your Groq API key (gsk_...)."
     )
     st.stop()
 
@@ -99,7 +99,7 @@ with st.sidebar:
     arrears = st.radio("Semester Tuition Fee Arrears", ["Yes (Delinquent)", "No"])
 
     st.subheader("Academic Milestones")
-    # --- UPDATED SLIDERS: BOUNDED ECTS 10-40 & GERMAN GRADESCALE 1.0-5.0 ---
+    # --- 🎯 SYNCED METRIC SLIDERS: BOUNDED ECTS 10-40 & GERMAN GRADESCALE 1.0-5.0 ---
     ects_s1 = st.slider("Earned ECTS (1st Semester)", 10, 40, 30, step=5)
     grade_s1 = st.slider("Grade Average Point (1st Semester)", 1.0, 5.0, 2.0, step=0.1)
     ects_s2 = st.slider("Earned ECTS (2nd Semester)", 10, 40, 25, step=5)
@@ -177,7 +177,8 @@ if st.button("Calculate Risk & Match Regulations", type="primary"):
     else:
         st.success(f"Operational Status: {status}")
 
-    st.metric(label="Calculated Exmatriculation Probability", value=f"{risk_prob:.2%}")
+    # --- 🎯 SYNCED OUTPUT: Uses :.0% to round to whole percentage values ---
+    st.metric(label="Calculated Exmatriculation Probability", value=f"{risk_prob:.0%}")
 
     st.header("Assigned Intervention Cohort")
     cluster_mapping = {
