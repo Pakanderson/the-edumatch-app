@@ -9,7 +9,6 @@ python_version: '3.11'
 app_file: app.py
 pinned: false
 ---
-
-# EduMatch: Predictive Retention Pipeline & Advisor Dashboard
+# EduMatch: Predictive Student Retention Pipeline With Advisor Decision Dashboard
 
 This repository hosts the Streamlit application for the EduMatch predictive analytics framework.
